@@ -39,18 +39,40 @@ void restoreBuf(char* c)
         c[i] = '\0'; 
 }
 
+/*Find the file size and return it*/
+long int fileSize(char filename[]) 
+{ 
+    //printf("In fileSize function\n");
+    FILE* file = fopen(filename, "r"); 
+  
+    if (file == NULL) { 
+        printf("File Not Found!\n"); 
+        return -1; 
+    } 
+  
+    fseek(file, 0L, SEEK_END); 
+   
+    long int number = ftell(file); 
+   
+    fclose(file); 
+    
+    return number; 
+}
 
 
 /*Process the get request*/
 int get(int connfd){
     size_t n; 
     char buf[MAXLINE];
+    bzero(buf, MAXLINE);
     char requestType[MAXLINE];
     char requestURL[MAXLINE];
     char requestTail[MAXLINE];
+    char requestPort[MAXLINE];
 
     /*If the size of the received buffer is 0, return to keep the connection alive*/
     n = read(connfd, buf, MAXLINE);
+    printf("OG buffer is: %s\n",buf);
     if(strlen(buf) == 0){
         return 0;
     }
@@ -64,6 +86,7 @@ int get(int connfd){
         }
     a = 4;
     int b = 0;
+    int count = 0;
     while(buf[a] != 'w'){
         a++;
     }
@@ -75,6 +98,13 @@ int get(int connfd){
             requestURL[b] = buf[a];
             a++;
             b++;
+        }
+        else if(buf[a] == '/'){
+            break;
+        }
+        else if(buf[a - count] == ':'){
+            requestPort[a] = buf[a];
+            count+=1;
         }
         else{
             a++;
@@ -89,26 +119,55 @@ int get(int connfd){
 
     if (strcmp(requestType, "GET") != 0){
         printf("HTTP 400 Bad Request\n");
-        char msg[] = "HTTP 400 Bad Request";
-        write(connfd, msg, strlen(msg));
+        //char msg[] = "HTTP 400 Bad Request";
+        //write(connfd, msg, strlen(msg));
         return 0;
     }
+    char *token = strtok(buf, "\n");
+    count = 0;
+    while(count != 1) {
+        //printf("TOKEN IS:********%s\n",token);
+        token = strtok(NULL, "\n");
+        count+=1;
+    }
+    //printf("ABOUT TO START PARSING Host_Name\n");
+    int start = 6;
+    int start2 = 0;
+    char host_name[MAXLINE];
+    while(start < strlen(token)){
+        host_name[start2] = token[start];
+        start+=1;
+        start2+=1;
+    }
+
+    
     strtok(requestURL, "\n");
-    printf("The hostname is: %s\n",requestURL);
+    strtok(host_name, "\n");
+    strtok(host_name, "\r");
+    //printf("The hostname is: %s\n",requestURL);
+    printf("Host_Name AT END: *****%s\n",host_name);
     struct hostent *server;
     /* gethostbyname: get the server's DNS entry */
-    server = gethostbyname(requestURL);
+    server = gethostbyname(host_name);
     if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host as %s\n", requestURL);
+        fprintf(stderr,"ERROR, no such host as %s\n", host_name);
         char msg[] = "HTTP 404 Not Found\n";
         write(connfd, msg, strlen(msg));
-        exit(0);
+        //exit(0);
+        return 0;
+    }
+    else{
+        printf("Resolved Host_Name Successfully!\n");
     }
 
 
     /*Create the socket connection to the server*/
     int sockfd, portno, s;
-    portno = 80;
+    portno = atoi(requestPort);
+    if(portno == 0){
+        portno = 80;
+    }
+    printf("The port requested is: %d\n",portno);
     int serverlen;
     struct sockaddr_in serveraddr;
     /* socket: create the socket */
@@ -120,46 +179,101 @@ int get(int connfd){
     /* build the server's Internet address */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, 
-      (char *)&serveraddr.sin_addr.s_addr, server->h_length);
+    bcopy((char *)server->h_addr, (char *)&serveraddr.sin_addr.s_addr, server->h_length);
     serveraddr.sin_port = htons(portno);
 
+    if(connect(sockfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+        printf("Couldn't connect to server\n");
+        return 1;
+    }
     /*Send the request to the desired server on behalf of client*/
     printf("About to send data to server\n");
+    printf("The buffer contains: %s\n",buf);
     serverlen = sizeof(serveraddr);
-    s = sendto(sockfd, buf, strlen(buf), 0, &serveraddr, serverlen);
-    printf("Size of message sent %d\n",s);
-    if (n < 0) 
-        error("ERROR in sendto");
+    
+    // if (sendto(sockfd, buf, strlen(buf), 0, &serveraddr, serverlen) < 0) {
+    //     error("ERROR in sendto");
+    // }
+    write(sockfd, buf, sizeof(buf)); 
 
     /*Receive data from server*/
     char rbuf[MAXLINE];
-    restoreBuf(rbuf);
-    while(1){
-
-            n = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
-            if (n < 0) 
-                error("ERROR in recvfrom");
-
-            printf("rbuf from server: %s\n",rbuf);
+    bzero(rbuf, sizeof(rbuf));
+    //restoreBuf(rbuf);
+    
+    char *fname = host_name;
+    strcat(fname,".txt");
+    if( access( fname, F_OK ) != -1 ) {
+        // file DOES exist, so use cached info
+        long int fsize = fileSize(fname);
+        int numBytes = 0;
+        int file;
+        int totalBytes = 0;
+        file = open(host_name, O_RDONLY); 
+        /*While the total number of bytes read is less than the file size, keep writing the file contents*/
+        while(totalBytes < fsize){
+            numBytes = read(file,rbuf,MAXLINE);
+            totalBytes += numBytes;
+            write(connfd, rbuf,numBytes);
         }
+        close(file);
 
 
+        } 
+    else {
+        // file DOESN't exist, so request from server, cache the info, and send the information back to the user
+    
+        /*Create the file that will store the requested server information in a cache for future use*/
+        char *filename = host_name;
+        
+        printf("FILENAME BEING CREATED IS: %s\n",filename);
+        FILE *file = fopen(filename, "w");
+    
+        while(1){
+
+            printf("Trying to receive from the server.............\n");
+            s = read(sockfd, rbuf, MAXLINE); 
+            //s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
+            if (s <=0){
+                break;
+            }
+            printf("THE rbuf IS: *****************\n%s\n",rbuf);
+            printf("END OF RBUF*********************\n");
+            write(connfd, rbuf,strlen(rbuf));
+            //fputs(rbuf,file);
+            fprintf(file, "%s", rbuf);
+            bzero(rbuf, sizeof(rbuf));
+            printf("Received %d bytes from server\n",s);
+            
+        }
+        
+        fclose(file);
+        close(sockfd);
+    }
+    // s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
+    // printf("Received from the server: %s\n",rbuf);
+    // write(connfd, rbuf, MAXLINE);
 
 }
 
 
 int main(int argc, char **argv) 
 {
-    int listenfd, *connfdp, port, clientlen=sizeof(struct sockaddr_in);
+    int listenfd, *connfdp, port, clientlen=sizeof(struct sockaddr_in), timeout;
     struct sockaddr_in clientaddr;
     pthread_t tid; 
 
-    if (argc != 2) {
+    //if (argc != 2) {
+    if (argc < 3) {
 	fprintf(stderr, "usage: %s <port>\n", argv[0]);
 	exit(0);
     }
     port = atoi(argv[1]);
+
+    /*Get the timeout from the user*/
+    if (argc == 3){
+        timeout = atoi(argv[2]);
+    }
 
     listenfd = open_listenfd(port);
     while (1) {

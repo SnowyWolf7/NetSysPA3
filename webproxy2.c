@@ -1,4 +1,6 @@
-/* 
+    struct hostent *server;
+
+  /* 
  *Aaron Steiner PA3
  *
  */
@@ -19,6 +21,14 @@
 #define MAXBUF   8192  /* max I/O buffer size */
 #define LISTENQ  1024  /* second argument to listen() */
 
+/* 
+ * error - wrapper for perror
+ */
+void error(char *msg) {
+    perror(msg);
+    exit(0);
+}
+
 int open_listenfd(int port);
 //void echo(int connfd);
 void *thread(void *vargp);
@@ -32,193 +42,135 @@ void restoreBuf(char* c)
 }
 
 
-/*Find the file size and return it*/
-long int fileSize(char filename[]) 
-{ 
-    //printf("In fileSize function\n");
-    FILE* file = fopen(filename, "r"); 
-  
-    if (file == NULL) { 
-        printf("File Not Found!\n"); 
-        return -1; 
-    } 
-  
-    fseek(file, 0L, SEEK_END); 
-   
-    long int number = ftell(file); 
-   
-    fclose(file); 
-    
-    return number; 
-}
 
 /*Process the get request*/
 int get(int connfd){
     size_t n; 
     char buf[MAXLINE];
-    char rString[MAXLINE];
-    char Default[14];
-    char fstring[MAXLINE];
-    
-    int numBytes = 0;
-    restoreBuf(buf);
-    restoreBuf(rString);
-    restoreBuf(fstring);
-    char* httpmsg;
+    bzero(buf, MAXLINE);
+    char requestType[MAXLINE];
+    char requestURL[MAXLINE];
+    char requestTail[MAXLINE];
+    char requestPort[MAXLINE];
+
     /*If the size of the received buffer is 0, return to keep the connection alive*/
     n = read(connfd, buf, MAXLINE);
+    printf("OG buffer is: %s\n",buf);
     if(strlen(buf) == 0){
         return 0;
     }
-    /*Loop through and get the filepath from the request*/
+
+    /*Loop through and get the requested http path from the request*/
     int a = 0;
-    int b = 4;
     int buflength = strlen(buf) - 1;
-    char filepath[buflength - 4];
-    bzero(filepath, sizeof(filepath));
-    while( a <= buflength - 4){
-        filepath[a] = buf[b];
+    while( a <= 2){
+        requestType[a] = buf[a];
         a++;
-        b++;
         }
-    //printf("filepath: %s\n", filepath);
-    strtok(filepath, "\n");
-
-    /*create a path for when the get request is the default localhost:<port #> */
-    for(int i=0; i < 14; i++){
-        Default[i] = buf[i];
+    a = 4;
+    int b = 0;
+    int count = 0;
+    while(buf[a] != 'w'){
+        a++;
     }
 
-    /*if the default directory is requested show default index.html*/
-    if(strcmp(Default, "GET / HTTP/1.1") == 0){
-        
-        //int numBytes = 0;
-        /*Get the size of the file*/
-        long int fsize = fileSize("index.html");
-        
-        /*Open the requested file*/
-        int file;
-        file = open("index.html", O_RDONLY); 
-        
-        
-        char sBuf[MAXLINE];
-        /*Read the file and set the number of bytes read to numBytes*/
-        numBytes = read(file,sBuf,MAXLINE);
 
-        /*This is the first segment of the default request*/
-        httpmsg="HTTP/1.1 200 Document Follows\r\nContent-Type:text/html\r\nContent-Length:";
-
-        /*Convert the long int file size to a string*/
-        char sizeString[4];
-        sprintf(sizeString, "%ld", fsize);
-        
-        /*Concatenate all needed pieces of the string to rString*/
-        strcat(rString, httpmsg);
-        
-        strcat(rString,sizeString);
-        
-        strcat(rString,sBuf);
-        
-        /*Copy rString to buf and write buf back to the connection*/
-        strcpy(buf,rString);
-        write(connfd, buf,sizeof(rString));
-        
-    }
-
-    else{
-        /*extract directory from the filepath*/
-        char dir[50];
-        strcpy(dir, "");
-
-        int i = 1;
-        while(1){
-            if(filepath[i] == ' '){
-                break;
-            }
-            dir[i-1] = filepath[i];
-            i++;
+    while(buf[a] != ' ')
+    {
+        if(buf[a] != '/'){
+            requestURL[b] = buf[a];
+            a++;
+            b++;
         }
-        
-        
-
-        /*get file extension*/
-        int q = 1;
-        char* ext;
-        while(q <= 50){
-            if(dir[q] == '.'){
-                if(dir[q+1] == 'h'){
-                    ext = "text/html";
-                }
-                else if(dir[q+1] == 't'){
-                    ext = "text/plain";
-                }
-                else if(dir[q+1] == 'p'){
-                    ext = "image/png";
-                }
-                else if(dir[q+1] == 'g'){
-                    ext = "image/gif";
-                }
-                else if(dir[q+1] == 'j'){
-                    if(dir[q+2] == 's'){
-                        ext = "application/javascript";
-                    }
-                    else{
-                        ext = "image/jpg";
-                    }
-                }
-                else if(dir[q+1] == 'c'){
-                    ext = "text/css";
-                }
-            }
-            q++;
+        else if(buf[a] == '/'){
+            break;
         }
-        
-        long int fsize = fileSize(dir);
-        int numBytes = 0;
-        int file;
-        /*If the size returns -1 that means that file doesn't exist, write the 500 internal server error back*/
-        if(fsize == -1){
-            printf("HTTP/1.1 500 Internal Server Error\n");
-            char msg[] = "HTTP/1.1 500 Internal Server Error";
-            write(connfd, msg, strlen(msg));
-            return 0;
-            
+        else if(buf[a - count] == ':'){
+            requestPort[a] = buf[a];
+            count+=1;
         }
         else{
-
-            file = open(dir, O_RDONLY); 
-            /*Get the various pieces of information required for the header and concatenate them onto rString*/
-            httpmsg="HTTP/1.1 200 Document Follows\r\nContent-Type:";
-            char extmsg[] = "\r\nContent-Length:";
-            restoreBuf(rString);
-            strcat(rString,httpmsg);
-            strcat(rString,ext);
-            
-            strcat(rString,extmsg);
-            char sizeString[MAXLINE];
-            strtok(sizeString, "\n");
-            
-            sprintf(sizeString, "%ld", fsize);
-            
-            strcat(rString,sizeString);
-            strcat(rString,"\r\n\r\n");
-            //strcat(rString,fstring);
-            restoreBuf(buf);
-            strcpy(buf,rString);
-            printf("%s\n",buf);
-            /*Write the header information back before writing the file information*/
-            int error = write(connfd, buf,strlen(rString));
-            int totalBytes = 0;
-            /*While the total number of bytes read is less than the file size, keep writing the file contents*/
-            while(totalBytes < fsize){
-                numBytes = read(file,rString,MAXLINE);
-                totalBytes += numBytes;
-                write(connfd, rString,numBytes);
-            }
-            
-            close(file);
+            a++;
         }
     }
+    a++;
+     while(a <= buflength)
+    {
+        requestTail[b] = buf[a];
+        a++;
+    }
+
+    if (strcmp(requestType, "GET") != 0){
+        printf("HTTP 400 Bad Request\n");
+        char msg[] = "HTTP 400 Bad Request";
+        write(connfd, msg, strlen(msg));
+        return 0;
+    }
+    strtok(requestURL, "\n");
+    printf("The hostname is: %s\n",requestURL);
+    struct hostent *server;
+    /* gethostbyname: get the server's DNS entry */
+    server = gethostbyname(requestURL);
+    if (server == NULL) {
+        fprintf(stderr,"ERROR, no such host as %s\n", requestURL);
+        char msg[] = "HTTP 404 Not Found\n";
+        write(connfd, msg, strlen(msg));
+        exit(0);
+    }
+
+
+    /*Create the socket connection to the server*/
+    int sockfd, portno, s;
+    portno = atoi(requestPort);
+    if(portno == 0){
+        portno = 80;
+    }
+    int serverlen;
+    struct sockaddr_in serveraddr;
+    /* socket: create the socket */
+    printf("About to create socket to server\n");
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) 
+        error("ERROR opening socket");
+
+    /* build the server's Internet address */
+    bzero((char *) &serveraddr, sizeof(serveraddr));
+    serveraddr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, 
+      (char *)&serveraddr.sin_addr.s_addr, server->h_length);
+    serveraddr.sin_port = htons(portno);
+
+
+    if(connect(sockfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
+        printf("Couldn't connect to server\n");
+        return 1;
+    }
+
+    /*Send the request to the desired server on behalf of client*/
+    printf("About to send data to server\n");
+    serverlen = sizeof(serveraddr);
+    s = sendto(sockfd, buf, strlen(buf), 0, &serveraddr, serverlen);
+    //write(sockfd, buf, sizeof(buf)); 
+    printf("Size of message sent %d\n",s);
+    if (s < 0) 
+        error("ERROR in sendto");
+
+    /*Receive data from server*/
+    char rbuf[MAXLINE];
+    bzero(rbuf,MAXLINE);
+    while(1){
+
+            s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
+            // s = read(sockfd, rbuf, MAXLINE); 
+            if (s <= 0) 
+                break;
+            write(connfd, rbuf,strlen(rbuf));
+
+            printf("rbuf from server: %s\n",rbuf);
+        }
+    //close(sockfd);
+
+
 }
 
 
@@ -229,16 +181,16 @@ int main(int argc, char **argv)
     pthread_t tid; 
 
     if (argc != 2) {
-	fprintf(stderr, "usage: %s <port>\n", argv[0]);
-	exit(0);
+    fprintf(stderr, "usage: %s <port>\n", argv[0]);
+    exit(0);
     }
     port = atoi(argv[1]);
 
     listenfd = open_listenfd(port);
     while (1) {
-	   connfdp = malloc(sizeof(int));
-	   *connfdp = accept(listenfd, (struct sockaddr*)&clientaddr, &clientlen);
-	   pthread_create(&tid, NULL, thread, connfdp);
+       connfdp = malloc(sizeof(int));
+       *connfdp = accept(listenfd, (struct sockaddr*)&clientaddr, &clientlen);
+       pthread_create(&tid, NULL, thread, connfdp);
     }
 }
 
@@ -290,5 +242,3 @@ int open_listenfd(int port)
         return -1;
     return listenfd;
 } /* end open_listenfd */
-
-
