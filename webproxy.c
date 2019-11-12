@@ -73,6 +73,8 @@ int get(int connfd){
     /*If the size of the received buffer is 0, return to keep the connection alive*/
     n = read(connfd, buf, MAXLINE);
     printf("OG buffer is: %s\n",buf);
+    char buf_2[MAXLINE];
+    strcpy(buf_2,buf);
     if(strlen(buf) == 0){
         return 0;
     }
@@ -148,6 +150,7 @@ int get(int connfd){
     printf("Host_Name AT END: *****%s\n",host_name);
     struct hostent *server;
     /* gethostbyname: get the server's DNS entry */
+    
     server = gethostbyname(host_name);
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host as %s\n", host_name);
@@ -194,33 +197,34 @@ int get(int connfd){
     // if (sendto(sockfd, buf, strlen(buf), 0, &serveraddr, serverlen) < 0) {
     //     error("ERROR in sendto");
     // }
-    write(sockfd, buf, sizeof(buf)); 
+    write(sockfd, buf_2, sizeof(buf_2));
 
     /*Receive data from server*/
     char rbuf[MAXLINE];
     bzero(rbuf, sizeof(rbuf));
     //restoreBuf(rbuf);
     
-    char *fname = host_name;
-    strcat(fname,".txt");
-    if( access( fname, F_OK ) != -1 ) {
-        // file DOES exist, so use cached info
-        long int fsize = fileSize(fname);
-        int numBytes = 0;
-        int file;
-        int totalBytes = 0;
-        file = open(host_name, O_RDONLY); 
-        /*While the total number of bytes read is less than the file size, keep writing the file contents*/
-        while(totalBytes < fsize){
-            numBytes = read(file,rbuf,MAXLINE);
-            totalBytes += numBytes;
-            write(connfd, rbuf,numBytes);
-        }
-        close(file);
+    // char *fname = host_name;
+    // strcat(fname,".txt");
+    // if( access( fname, F_OK ) != -1 ) {
+    //     // file DOES exist, so use cached info
+    //     printf("The requested server is already in cache, read the file\n");
+    //     long int fsize = fileSize(fname);
+    //     int numBytes = 0;
+    //     int file;
+    //     int totalBytes = 0;
+    //     file = open(host_name, O_RDONLY); 
+    //     /*While the total number of bytes read is less than the file size, keep writing the file contents*/
+    //     while(totalBytes < fsize){
+    //         numBytes = read(file,rbuf,MAXLINE);
+    //         totalBytes += numBytes;
+    //         write(connfd, rbuf,numBytes);
+    //     }
+    //     close(file);
 
 
-        } 
-    else {
+    //     } 
+    // else {
         // file DOESN't exist, so request from server, cache the info, and send the information back to the user
     
         /*Create the file that will store the requested server information in a cache for future use*/
@@ -237,19 +241,23 @@ int get(int connfd){
             if (s <=0){
                 break;
             }
+            
             printf("THE rbuf IS: *****************\n%s\n",rbuf);
             printf("END OF RBUF*********************\n");
-            write(connfd, rbuf,strlen(rbuf));
-            //fputs(rbuf,file);
+            int b = 0;
+            b = write(connfd, rbuf,s);
             fprintf(file, "%s", rbuf);
+            //fwrite(rbuf,1,s,file);
             bzero(rbuf, sizeof(rbuf));
+            printf("Wrote %d bytes to the server \n", b);
             printf("Received %d bytes from server\n",s);
             
         }
         
+        
         fclose(file);
         close(sockfd);
-    }
+    //}
     // s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
     // printf("Received from the server: %s\n",rbuf);
     // write(connfd, rbuf, MAXLINE);
