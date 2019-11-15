@@ -39,6 +39,86 @@ void restoreBuf(char* c)
         c[i] = '\0'; 
 }
 
+int parseHeader(char* rbuf){
+    int i,count = 0;
+    int size = strlen(rbuf) - 1;
+    while(i < size){
+        if(rbuf[i] == '\r'){
+            i+=1;
+            count+=1;
+            if(rbuf[i] == '\n'){
+                i+=1;
+                count+=1;
+                if(rbuf[i] == '\r'){
+                    i+=1;
+                    count+=1;
+                    if(rbuf[i] == '\n'){
+                        count+=1;
+                        break;
+                    }
+                }
+            }
+        }
+        count+=1;
+        i+=1;
+    }
+
+    printf("The header length is: %d\n",count);
+    return count;
+
+}
+
+
+
+
+int parseReceive(char* rbuf, char* rbuf_2){
+    int i,j,charCount = 0;
+    char cLength[MAXLINE];
+    int size = strlen(rbuf) - 1;
+    while(i < size){
+        //printf("RBUF CHAR AT THIS STAGE IS: %c\n",rbuf[i]);
+        if(rbuf[i] == 'L'){
+            i+=1;
+            if(rbuf[i] == 'e'){
+                i+=1;
+                if(rbuf[i] == 'n'){
+                    i+=1;
+                    if(rbuf[i] == 'g'){
+                        i+=1;
+                        if(rbuf[i] == 't'){
+                            i+=1;
+                            if(rbuf[i] == 'h'){
+                                i+=3;
+                                while(rbuf[i] != '\n'){
+                                    cLength[j] = rbuf[i];
+                                    printf("Getting the length of the content, ****char is%c\n",rbuf[i]);
+                                    charCount+=1;
+                                    i+=1;
+                                    j+=1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i+=1;
+    }
+
+    /*Populate rbuf_2 with only the content length given by the server*/
+    int it = 0;
+    strtok(cLength, "\n");
+    int cLengthNum = atoi(cLength);
+    printf("THE CONTENT LENGTH IS: %d\n",cLengthNum);
+    return cLengthNum;
+    // while(it <= cLengthNum){
+    //     rbuf_2[it] = rbuf[it];
+    //     it+=1;
+    // }
+
+    
+}
+
 /*Find the file size and return it*/
 long int fileSize(char filename[]) 
 { 
@@ -60,11 +140,12 @@ long int fileSize(char filename[])
 }
 
 
+
 /*Process the get request*/
 int get(int connfd){
+    
     size_t n; 
     char buf[MAXLINE];
-    bzero(buf, MAXLINE);
     char requestType[MAXLINE];
     char requestURL[MAXLINE];
     char requestTail[MAXLINE];
@@ -75,13 +156,14 @@ int get(int connfd){
     printf("OG buffer is: %s\n",buf);
     char buf_2[MAXLINE];
     strcpy(buf_2,buf);
-    if(strlen(buf) == 0){
+    if(sizeof(buf) == 0){
         return 0;
     }
-
+    
     /*Loop through and get the requested http path from the request*/
     int a = 0;
-    int buflength = strlen(buf) - 1;
+
+    //int buflength = strlen(buf) - 1;
     while( a <= 2){
         requestType[a] = buf[a];
         a++;
@@ -93,7 +175,7 @@ int get(int connfd){
         a++;
     }
 
-
+    
     while(buf[a] != ' ')
     {
         if(buf[a] != '/'){
@@ -113,18 +195,15 @@ int get(int connfd){
         }
     }
     a++;
-     while(a <= buflength)
-    {
-        requestTail[b] = buf[a];
-        a++;
-    }
-
+    
+    
     if (strcmp(requestType, "GET") != 0){
         printf("HTTP 400 Bad Request\n");
         //char msg[] = "HTTP 400 Bad Request";
-        //write(connfd, msg, strlen(msg));
+        //write(connfd, msg, sizeof(msg));
         return 0;
     }
+    
     char *token = strtok(buf, "\n");
     count = 0;
     while(count != 1) {
@@ -132,6 +211,7 @@ int get(int connfd){
         token = strtok(NULL, "\n");
         count+=1;
     }
+    
     //printf("ABOUT TO START PARSING Host_Name\n");
     int start = 6;
     int start2 = 0;
@@ -155,14 +235,14 @@ int get(int connfd){
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host as %s\n", host_name);
         char msg[] = "HTTP 404 Not Found\n";
-        write(connfd, msg, strlen(msg));
+        write(connfd, msg, sizeof(msg));
         //exit(0);
         return 0;
     }
     else{
         printf("Resolved Host_Name Successfully!\n");
     }
-
+    
 
     /*Create the socket connection to the server*/
     int sockfd, portno, s;
@@ -170,6 +250,7 @@ int get(int connfd){
     if(portno == 0){
         portno = 80;
     }
+
     printf("The port requested is: %d\n",portno);
     int serverlen;
     struct sockaddr_in serveraddr;
@@ -178,13 +259,13 @@ int get(int connfd){
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) 
         error("ERROR opening socket");
-
+    
     /* build the server's Internet address */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     bcopy((char *)server->h_addr, (char *)&serveraddr.sin_addr.s_addr, server->h_length);
     serveraddr.sin_port = htons(portno);
-
+    
     if(connect(sockfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0){
         printf("Couldn't connect to server\n");
         return 1;
@@ -197,11 +278,11 @@ int get(int connfd){
     // if (sendto(sockfd, buf, strlen(buf), 0, &serveraddr, serverlen) < 0) {
     //     error("ERROR in sendto");
     // }
-    write(sockfd, buf_2, sizeof(buf_2));
-
+    write(sockfd, buf_2, n);
+    
     /*Receive data from server*/
     char rbuf[MAXLINE];
-    bzero(rbuf, sizeof(rbuf));
+    char rbuf_2[MAXLINE];
     //restoreBuf(rbuf);
     
     // char *fname = host_name;
@@ -228,39 +309,66 @@ int get(int connfd){
         // file DOESN't exist, so request from server, cache the info, and send the information back to the user
     
         /*Create the file that will store the requested server information in a cache for future use*/
+    
         char *filename = host_name;
         
         printf("FILENAME BEING CREATED IS: %s\n",filename);
         FILE *file = fopen(filename, "w");
-    
+        int bytesReceived = 0;
         while(1){
-
+            
             printf("Trying to receive from the server.............\n");
             s = read(sockfd, rbuf, MAXLINE); 
             //s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
-            if (s <=0){
-                break;
-            }
             
             printf("THE rbuf IS: *****************\n%s\n",rbuf);
             printf("END OF RBUF*********************\n");
+            
+            int contentLength;
+            int headerLength = parseHeader(rbuf);
+            int header = 0;
+            if(headerLength > 0){
+                contentLength = parseReceive(rbuf, rbuf_2);
+                header = 1;
+            }
+            //int contentLength = parseReceive(rbuf, rbuf_2);
+            
+            //printf("THE PARSED rbuf rbuf_2 IS:*******\n%s\n",rbuf);
             int b = 0;
             b = write(connfd, rbuf,s);
+            
             fprintf(file, "%s", rbuf);
-            //fwrite(rbuf,1,s,file);
             bzero(rbuf, sizeof(rbuf));
+            bzero(rbuf_2, sizeof(rbuf_2));
             printf("Wrote %d bytes to the server \n", b);
             printf("Received %d bytes from server\n",s);
+            
+            if(header == 1){
+                bytesReceived += (s - headerLength);
+            }
+            else{
+                bytesReceived += s;
+            }
+            
+            printf("NUMBER OF BYTES Received: %d\n", bytesReceived);
+            if (bytesReceived >= contentLength){
+                break;
+            }
+            if(s == 0){
+                break;
+            }
             
         }
         
         
         fclose(file);
         close(sockfd);
+        bzero(buf, sizeof(buf));
+        bzero(buf_2,sizeof(buf_2));
+        bzero(rbuf, sizeof(rbuf));
+        bzero(rbuf_2, sizeof(rbuf_2));
     //}
-    // s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
-    // printf("Received from the server: %s\n",rbuf);
-    // write(connfd, rbuf, MAXLINE);
+    
 
 }
 
