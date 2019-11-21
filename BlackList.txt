@@ -1,2 +1,4 @@
 www.iitg.ac.in
 14.139.196.22
+ajax.googleapis.com
+172.217.11.234

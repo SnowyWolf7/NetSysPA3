@@ -1,6 +1,7 @@
-www.google.cn 172.217.2.3
-www.cs.cmu.edu 128.2.42.95
 netsys.cs.colorado.edu 128.138.202.178
-ajax.googleapis.com 172.217.12.10
-detectportal.firefox.com 104.124.58.144
+detectportal.firefox.com 129.19.64.230
+ajax.googleapis.com 172.217.11.234
+www.cs.cmu.edu 128.2.42.95
 ciscobinary.openh264.org 104.123.198.35
+
+web.cs.wpi.edu 130.215.29.52

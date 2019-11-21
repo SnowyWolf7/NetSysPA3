@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <time.h>
 
 #define MAXLINE  8192  /* max text line length */
 #define MAXBUF   8192  /* max I/O buffer size */
@@ -31,14 +32,27 @@ int open_listenfd(int port);
 //void echo(int connfd);
 void *thread(void *vargp);
 
-/*Clear the buffer*/
-void restoreBuf(char* c) 
-{ 
-    int i; 
-    for (i = 0; i < MAXLINE; i++) 
-        c[i] = '\0'; 
+
+/*Get the timout from the user and delete the cache values when the timeout expires*/
+void processTimeout(int timeout){
+    clock_t start = clock(), diff;
+    while((clock() - start) < timeout){
+        diff = clock() - start;
+        if(diff >= timeout){
+            printf("THE SET TIMEOUT HAS EXPIRED! DELETING CACHE CONTENTS!!\n");
+            break;
+        }
+        else{
+            continue;
+        }
+    }
+
+    FILE *file = fopen("Host_IP_Address_Cache.txt", "w");
+    fclose(file);
+    
 }
 
+/*Find the length of the header so it can be added to the content length*/
 int parseHeader(char* rbuf){
     int i,count = 0;
     int size = strlen(rbuf) - 1;
@@ -70,7 +84,7 @@ int parseHeader(char* rbuf){
 
 
 
-
+/*parse through the received information given by the server to find the length of the content it's going to write*/
 int parseReceive(char* rbuf, char* rbuf_2){
     int i,j,charCount = 0;
     char cLength[MAXLINE];
@@ -139,6 +153,7 @@ long int fileSize(char filename[])
     return number; 
 }
 
+/*Get the IP address from the requested hostname so that it can be stored in the cache for quicler lookups*/
 void extractIP(struct hostent *server, char* host_name){
     
     char IP[MAXLINE];
@@ -158,6 +173,7 @@ void extractIP(struct hostent *server, char* host_name){
 
 }
 
+/*Check to see if the requested hostname resides in the cache, if so return the corresponding IP address*/
 char *checkHostRequest(char* host_name){
     
     long int fsize = fileSize("Host_IP_Address_Cache.txt");
@@ -168,7 +184,6 @@ char *checkHostRequest(char* host_name){
     char *ipAddr;
     
     
-    /*While the total number of bytes read is less than the file size, keep writing the file contents*/
     // while(totalBytes < fsize){
     //         fgets(line,sizeof(line), file);
     //         totalBytes += sizeof(line);
@@ -180,6 +195,7 @@ char *checkHostRequest(char* host_name){
             
     //     }
 
+    /*While the total number of bytes read is less than the file size, keep writing the file contents*/
     while(fgets(line,sizeof(line), file) != NULL){
             char * cHost = strtok_r(line," ", &ipAddr);
             if(strcmp(cHost,host_name) == 0){
@@ -195,6 +211,7 @@ char *checkHostRequest(char* host_name){
 
 }
 
+/*If the requested hostname is in the blacklist then 1 for true so a 403 Forbidden error can be thrown*/
 int checkBlackList(struct hostent *server,char* host_name){
     
     long int fsize = fileSize("BlackList.txt");
@@ -239,73 +256,47 @@ int get(int connfd){
     bzero(requestType, MAXLINE);
     bzero(requestPort, MAXLINE);
     bzero(requestURL, MAXLINE);
-    printf("SEF FAULT TEST 17\n");
+    
     /*If the size of the received buffer is 0, return to keep the connection alive*/
     n = read(connfd, buf, MAXLINE);
-    printf("SEF FAULT TEST 18\n");
+    
     printf("OG buffer is: %s\n",buf);
     char buf_2[MAXLINE];
     strcpy(buf_2,buf);
-    printf("SEF FAULT TEST 19\n");
+    
     if(sizeof(buf) == 0){
         return 0;
     }
-    printf("SEF FAULT TEST 20\n");
+    
     /*Loop through and get the requested http path from the request*/
     int a = 0;
-    printf("SEF FAULT TEST 21\n");
+    
     //int buflength = strlen(buf) - 1;
     while( a <= 2){
-        printf("SEF FAULT TEST 22\n");
         requestType[a] = buf[a];
         a++;
         }
     a = 4;
     int b = 0;
     int count = 0;
-    printf("SEF FAULT TEST 23\n");
-    // while(buf[a] != 'w'){
-    //     printf("SEF FAULT TEST 24\n");
-    //     a++;
-    // }
-
-    printf("SEF FAULT TEST 25\n");
-    // while(buf[a] != ' ')
-    // {
-    //     if(buf[a] != '/'){
-    //         requestURL[b] = buf[a];
-    //         a++;
-    //         b++;
-    //     }
-    //     else if(buf[a] == '/'){
-    //         break;
-    //     }
-    //     else if(buf[a - count] == ':'){
-    //         requestPort[a] = buf[a];
-    //         count+=1;
-    //     }
-    //     else{
-    //         a++;
-    //     }
-    // }
-    // a++;
     
     
+    /*If the request type is not GET, return*/
     if (strcmp(requestType, "GET") != 0){
         printf("HTTP 400 Bad Request\n");
-        //char msg[] = "HTTP 400 Bad Request";
-        //write(connfd, msg, sizeof(msg));
-        printf("SEF FAULT TEST 26\n");
+        char msg[] = "HTTP 400 Bad Request";
+        write(connfd, msg, sizeof(msg));
+        
         return 0;
     }
-    
     char *token = strtok(buf, "\n");
     count = 0;
-    printf("SEF FAULT TEST 27\n");
+    
+    /*Get the hostname from the GET request*/
     while(count != 1) {
         //printf("TOKEN IS:********%s\n",token);
         token = strtok(NULL, "\n");
-        printf("SEF FAULT TEST 28\n");
+        
         count+=1;
     }
     
@@ -313,10 +304,10 @@ int get(int connfd){
     int start = 6;
     int start2 = 0;
     char host_name[MAXLINE];
-    printf("SEF FAULT TEST 29\n");
+    
     while(start < strlen(token)){
         host_name[start2] = token[start];
-        printf("SEF FAULT TEST 30\n");
+        
         start+=1;
         start2+=1;
     }
@@ -325,41 +316,34 @@ int get(int connfd){
     //strtok(requestURL, "\n");
     strtok(host_name, "\n");
     strtok(host_name, "\r");
-    printf("SEF FAULT TEST 31\n");
     //printf("The hostname is: %s\n",requestURL);
     printf("Host_Name AT END: *****%s\n",host_name);
     struct hostent *server;
-    printf("SEF FAULT TEST 32\n");
+    
 
 
     
     /*Create the socket connection to the server*/
     int sockfd, portno, s;
     portno = atoi(requestPort);
-    printf("SEF FAULT TEST 33\n");
+    
     if(portno == 0){
         portno = 80;
     }
-    printf("SEF FAULT TEST 34\n");
+    
     printf("The port requested is: %d\n",portno);
     int serverlen;
     struct sockaddr_in serveraddr;
-    printf("SEF FAULT TEST 35\n");
+    
     /* gethostbyname: get the server's DNS entry */
     char *ipAddr = checkHostRequest(host_name);
     printf("ipAddr IS: %s\n",ipAddr);
-    printf("SEF FAULT TEST 36\n");
+    
     if(strcmp(ipAddr, "No") == 0){
         /*Host doesn't already exist*/
+        printf("No such host exists in cache so lookup ip address\n");
         server = gethostbyname(host_name);
-        /*Check to see if hostname is blacklisted*/
         
-        if(checkBlackList(server,host_name) == 1){
-            printf("Requested Host is BlackListed\n");
-            char msg[] = "ERROR 403 FORBIDDEN\n";
-            write(connfd, msg, strlen(msg));
-            return 0;
-        }
         
         if (server == NULL) {
             fprintf(stderr,"ERROR, no such host as %s\n", host_name);
@@ -368,6 +352,15 @@ int get(int connfd){
             //exit(0);
             return 0;
         }
+        /*Check to see if hostname is blacklisted*/
+        if(checkBlackList(server,host_name) == 1){
+            printf("Requested Host is BlackListed\n");
+            char msg[] = "ERROR 403 FORBIDDEN\n";
+            write(connfd, msg, strlen(msg));
+            return 0;
+        }
+        
+        
         else{
             printf("Resolved Host_Name Successfully!\n");
             extractIP(server, host_name);
@@ -425,7 +418,7 @@ int get(int connfd){
     /*Receive data from server*/
     char rbuf[MAXLINE];
     char rbuf_2[MAXLINE];
-    //restoreBuf(rbuf);
+    
     
     // char *fname = host_name;
     // strcat(fname,".txt");
@@ -442,6 +435,7 @@ int get(int connfd){
     //         numBytes = read(file,rbuf,MAXLINE);
     //         totalBytes += numBytes;
     //         write(connfd, rbuf,numBytes);
+    //         bzero(rbuf, MAXLINE);
     //     }
     //     close(file);
 
@@ -451,22 +445,23 @@ int get(int connfd){
         // file DOESN't exist, so request from server, cache the info, and send the information back to the user
     
         /*Create the file that will store the requested server information in a cache for future use*/
-        printf("SEF FAULT TEST 1\n");
+        
         char *filename = host_name;
         
         printf("FILENAME BEING CREATED IS: %s\n",filename);
         FILE *file = fopen(filename, "w");
         int bytesReceived = 0;
-        printf("SEF FAULT TEST 2\n");
+        
+        /*While the amount of content received is less than the (content-length + header length) keep looping until all info is received*/
         while(1){
-            printf("SEF FAULT TEST 3\n");
+            
             printf("Trying to receive from the server.............\n");
             s = read(sockfd, rbuf, MAXLINE); 
             //s = recvfrom(sockfd, rbuf, MAXLINE, 0, &serveraddr, &serverlen);
-            printf("SEF FAULT TEST 4\n");
+            
             printf("THE rbuf IS: *****************\n%s\n",rbuf);
             printf("END OF RBUF*********************\n");
-            printf("SEF FAULT TEST 5\n");
+            
             int contentLength;
             int headerLength = parseHeader(rbuf);
             int header = 0;
@@ -474,50 +469,50 @@ int get(int connfd){
                 contentLength = parseReceive(rbuf, rbuf_2);
                 header = 1;
             }
-            //int contentLength = parseReceive(rbuf, rbuf_2);
-            printf("SEF FAULT TEST 6\n");
-            //printf("THE PARSED rbuf rbuf_2 IS:*******\n%s\n",rbuf);
+            
+            /*write to the client during the loop*/
             int b = 0;
             b = write(connfd, rbuf,s);
-            printf("SEF FAULT TEST 7\n");
+            
+            /*Write content to a corresponding file so it has it for future use*/
             fprintf(file, "%s", rbuf);
             bzero(rbuf, sizeof(rbuf));
             bzero(rbuf_2, sizeof(rbuf_2));
             printf("Wrote %d bytes to the server \n", b);
             printf("Received %d bytes from server\n",s);
-            printf("SEF FAULT TEST 8\n");
+            
             if(header == 1){
-                printf("SEF FAULT TEST 9\n");
+                
                 bytesReceived += (s - headerLength);
             }
             else{
-                printf("SEF FAULT TEST 10\n");
+                
                 bytesReceived += s;
             }
-            printf("SEF FAULT TEST 11\n");
+            
             printf("NUMBER OF BYTES Received: %d\n", bytesReceived);
+            /*If the server sends 0 bytes or the number of total bytes received equals the amount the server said the proxy would receive, break loop*/
             if (bytesReceived >= contentLength){
-                printf("SEF FAULT TEST 12\n");
+                
                 break;
             }
             if(s == 0){
-                printf("SEF FAULT TEST 13\n");
+                
                 break;
             }
-            printf("SEF FAULT TEST 14\n");
+            
             
         }
         
-        printf("SEF FAULT TEST 15\n");
+        
         fclose(file);
         close(sockfd);
         bzero(buf, sizeof(buf));
         bzero(buf_2,sizeof(buf_2));
         bzero(rbuf, sizeof(rbuf));
         bzero(rbuf_2, sizeof(rbuf_2));
-    //}
-    
-        printf("SEF FAULT TEST 16\n");
+    //}//else statement bracket    
+        
 }
 
 
@@ -534,10 +529,13 @@ int main(int argc, char **argv)
     }
     port = atoi(argv[1]);
 
-    /*Get the timeout from the user*/
+    /*Get the timeout from the user and pass the value to the function to process the timeout*/
     if (argc == 3){
         timeout = atoi(argv[2]);
+        //processTimeout(timeout);
     }
+
+
 
     listenfd = open_listenfd(port);
     while (1) {
